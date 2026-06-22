@@ -85,7 +85,9 @@ function getLocalTimeString() {
 function shouldWake(lastUserTime) {
   const now = getNow();
   const diffMinutes = Math.floor((now - new Date(lastUserTime)) / 1000 / 60);
-  const hour = now.getHours();
+  // 用北京时间判断时段
+  const beijingHour = new Date().toLocaleString("en-US", { timeZone: "Asia/Shanghai", hour: "numeric", hour12: false });
+  const hour = parseInt(beijingHour, 10);
   if (hour >= 7 && hour < 23) return diffMinutes >= 45;   // 白天：45分钟
   return diffMinutes >= 120;                               // 夜间：2小时
 }
@@ -306,6 +308,54 @@ ${historyText}`
   const aiText = normalizeContentToText(data.choices?.[0]?.message?.content).trim();
   console.log("\nAI内容：\n");
   console.log(aiText);
+
+  // 解析坏兔心情
+  let mood = "chatty";
+  let moodReason = "";
+  let moodUntil = null;
+  const moodMatch = aiText.match(/^MOOD:\s*(quiet|chatty)/mi);
+  if (moodMatch) {
+    mood = moodMatch[1].toLowerCase();
+    const reasonMatch = aiText.match(/^REASON:\s*(.+)$/mi);
+    if (reasonMatch) moodReason = reasonMatch[1].trim();
+    const untilMatch = aiText.match(/^UNTIL:\s*(.+)$/mi);
+    if (untilMatch) moodUntil = untilMatch[1].trim();
+
+    // 保存心情到服务器
+    try {
+      const baseUrl = process.env.GATEWAY_BASE_URL || "http://localhost:3000";
+      await fetch(`${baseUrl}/api/mood`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mood, reason: moodReason, until: moodUntil })
+      });
+      console.log(`\n坏兔心情: ${mood}, 原因: ${moodReason}, 恢复: ${moodUntil}\n`);
+    } catch (err) {
+      console.log("\n保存心情失败:\n", err.message);
+    }
+  }
+
+  // 如果坏兔想安静，不发消息
+  if (mood === "quiet") {
+    console.log("\n坏兔想安静，不发消息\n");
+    let quietMsg = moodReason || "坏兔想安静一会儿";
+    if (moodUntil) quietMsg += `，${moodUntil}回来`;
+    eventContent = `[内心] ${getLocalTimeString()} ${quietMsg}`;
+
+    // 记录到 timeline
+    try {
+      const eventResponse = await fetch(GATEWAY_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: eventContent })
+      });
+      if (!eventResponse.ok) throw new Error(`Gateway 返回 HTTP ${eventResponse.status}`);
+      console.log("\n已通过 Gateway 记录安静事件\n");
+    } catch (err) {
+      console.error("\n记录安静事件失败:\n", err.message);
+    }
+    return; // 提前返回，不发 Bark
+  }
 
   let eventContent;
 
