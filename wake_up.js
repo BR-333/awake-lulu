@@ -97,6 +97,8 @@ function getLastUserTime(messages) {
   for (const msg of reversed) {
     if (msg.role === "user") {
       const content = normalizeContentToText(msg.content);
+      // 过滤系统提示词消息
+      if (content.includes("I will give you") || content.includes("<system>")) continue;
       // 支持多种时间格式：YYYY-MM-DDHH:MM 或 YYYY-MM-DD HH:MM
       const match = content.match(/^(\d{4}-\d{2}-\d{2})[ T]?(\d{2}:\d{2})/);
       if (match) return new Date(match[1] + " " + match[2]);
@@ -351,6 +353,8 @@ ${historyText}`
     }
   }
 
+  let eventContent;
+
   // 如果坏兔想安静，不发消息
   if (mood === "quiet") {
     console.log("\n坏兔想安静，不发消息\n");
@@ -372,8 +376,6 @@ ${historyText}`
     }
     return; // 提前返回，不发 Bark
   }
-
-  let eventContent;
 
   if (!aiText) {
     console.log("\nAI 返回空内容，本次不发送 Bark\n");
